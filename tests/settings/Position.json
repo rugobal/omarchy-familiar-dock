@@ -1,0 +1,98 @@
+{
+  "stockgs-keep-top-panel": true,
+  "panel-positions": {
+    "*": "LEFT"
+  },
+  "panel-sizes": {
+    "*": 64
+  },
+  "panel-lengths": {
+    "*": 75
+  },
+  "panel-anchors": {
+    "*": "START"
+  },
+  "panel-element-positions": {
+    "*": [
+      {
+        "element": "showAppsButton",
+        "visible": true,
+        "position": "stackedTL"
+      },
+      {
+        "element": "activitiesButton",
+        "visible": false,
+        "position": "centered"
+      },
+      {
+        "element": "leftBox",
+        "visible": true,
+        "position": "stackedTL"
+      },
+      {
+        "element": "taskbar",
+        "visible": true,
+        "position": "centerMonitor"
+      },
+      {
+        "element": "centerBox",
+        "visible": true,
+        "position": "centered"
+      },
+      {
+        "element": "rightBox",
+        "visible": false,
+        "position": "stackedBR"
+      },
+      {
+        "element": "dateMenu",
+        "visible": true,
+        "position": "stackedBR"
+      },
+      {
+        "element": "systemMenu",
+        "visible": false,
+        "position": "stackedBR"
+      },
+      {
+        "element": "desktopButton",
+        "visible": true,
+        "position": "stackedBR"
+      }
+    ]
+  },
+  "appicon-margin": 4,
+  "dot-style-focused": "DASHES",
+  "show-showdesktop-hover": true,
+  "showdesktop-button-width": 20,
+  "desktop-line-use-custom-color": true,
+  "desktop-line-custom-color": "#00ff80",
+  "window-preview-size": 180,
+  "context-menu-entries": [
+    {
+      "title": "Terminal",
+      "cmd": "TERMINALSETTINGS"
+    },
+    {
+      "title": "System monitor",
+      "cmd": "omarchy-launch-or-focus-tui btop"
+    },
+    {
+      "title": "Files",
+      "cmd": "nautilus --new-window"
+    }
+  ],
+  "panel-position": "BOTTOM",
+  "panel-size": 48,
+  "panel-element-positions-monitors-sync": true,
+  "primary-monitor": "",
+  "multi-monitors": true,
+  "show-activities-button": false,
+  "show-apps-icon-file": "",
+  "show-apps-icon-side-padding": 16,
+  "show-apps-override-escape": true,
+  "show-apps-button-context-menu-commands": [],
+  "show-apps-button-context-menu-titles": [],
+  "show-showdesktop-delay": 300,
+  "show-showdesktop-time": 180
+}

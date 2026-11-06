@@ -1,0 +1,130 @@
+{
+  "stockgs-keep-top-panel": true,
+  "panel-positions": {
+    "*": "BOTTOM"
+  },
+  "panel-sizes": {
+    "*": 45
+  },
+  "panel-lengths": {
+    "*": 100
+  },
+  "panel-anchors": {
+    "*": "MIDDLE"
+  },
+  "panel-element-positions": {
+    "*": [
+      {
+        "element": "showAppsButton",
+        "visible": true,
+        "position": "stackedTL"
+      },
+      {
+        "element": "activitiesButton",
+        "visible": false,
+        "position": "centered"
+      },
+      {
+        "element": "leftBox",
+        "visible": true,
+        "position": "stackedTL"
+      },
+      {
+        "element": "taskbar",
+        "visible": true,
+        "position": "centerMonitor"
+      },
+      {
+        "element": "centerBox",
+        "visible": true,
+        "position": "centered"
+      },
+      {
+        "element": "rightBox",
+        "visible": false,
+        "position": "stackedBR"
+      },
+      {
+        "element": "dateMenu",
+        "visible": true,
+        "position": "stackedBR"
+      },
+      {
+        "element": "systemMenu",
+        "visible": false,
+        "position": "stackedBR"
+      },
+      {
+        "element": "desktopButton",
+        "visible": true,
+        "position": "stackedBR"
+      }
+    ]
+  },
+  "appicon-margin": 4,
+  "dot-style-focused": "DASHES",
+  "show-showdesktop-hover": true,
+  "showdesktop-button-width": 10,
+  "desktop-line-use-custom-color": true,
+  "desktop-line-custom-color": "rgb(0,0,0)",
+  "window-preview-size": 260,
+  "context-menu-entries": [
+    {
+      "title": "Terminal",
+      "cmd": "TERMINALSETTINGS"
+    },
+    {
+      "title": "System monitor",
+      "cmd": "omarchy-launch-or-focus-tui btop"
+    },
+    {
+      "title": "Files",
+      "cmd": "nautilus --new-window"
+    }
+  ],
+  "show-favorites": true,
+  "show-favorites-all-monitors": true,
+  "show-running-apps": true,
+  "taskbar-locked": false,
+  "group-apps": false,
+  "group-apps-label-font-size": 16,
+  "group-apps-label-font-weight": "bold",
+  "group-apps-label-font-color": "#dddddd",
+  "group-apps-label-font-color-minimized": "#dddddd",
+  "group-apps-label-max-width": 220,
+  "group-apps-use-fixed-width": true,
+  "group-apps-underline-unfocused": true,
+  "group-apps-use-launchers": true,
+  "show-window-previews": true,
+  "show-window-previews-timeout": 200,
+  "leave-timeout": 100,
+  "window-preview-padding": 8,
+  "window-preview-aspect-ratio-x": 16,
+  "window-preview-aspect-ratio-y": 9,
+  "window-preview-fixed-x": false,
+  "window-preview-fixed-y": true,
+  "window-preview-animation-time": 260,
+  "window-preview-show-title": true,
+  "window-preview-title-position": "BOTTOM",
+  "window-preview-manual-styling": true,
+  "window-preview-title-font-color": "#00ff80",
+  "window-preview-title-font-size": 14,
+  "window-preview-title-font-weight": "inherit",
+  "window-preview-use-custom-icon-size": true,
+  "window-preview-custom-icon-size": 24,
+  "preview-use-custom-opacity": true,
+  "preview-custom-opacity": 80,
+  "preview-middle-click-close": true,
+  "window-preview-hide-immediate-click": false,
+  "peek-mode": true,
+  "enter-peek-mode-timeout": 300,
+  "peek-mode-opacity": 20,
+  "show-tooltip": true,
+  "isolate-workspaces": false,
+  "isolate-monitors": false,
+  "isolate-monitors-with-single-panel": false,
+  "progress-show-count": true,
+  "progress-show-bar": true,
+  "overview-click-to-exit": false,
+  "hide-overview-on-startup": false
+}

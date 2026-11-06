@@ -1,0 +1,108 @@
+{
+  "stockgs-keep-top-panel": true,
+  "panel-positions": {
+    "*": "BOTTOM"
+  },
+  "panel-sizes": {
+    "*": 45
+  },
+  "panel-lengths": {
+    "*": 100
+  },
+  "panel-anchors": {
+    "*": "MIDDLE"
+  },
+  "panel-element-positions": {
+    "*": [
+      {
+        "element": "showAppsButton",
+        "visible": true,
+        "position": "stackedTL"
+      },
+      {
+        "element": "activitiesButton",
+        "visible": false,
+        "position": "centered"
+      },
+      {
+        "element": "leftBox",
+        "visible": true,
+        "position": "stackedTL"
+      },
+      {
+        "element": "taskbar",
+        "visible": true,
+        "position": "centerMonitor"
+      },
+      {
+        "element": "centerBox",
+        "visible": true,
+        "position": "centered"
+      },
+      {
+        "element": "rightBox",
+        "visible": false,
+        "position": "stackedBR"
+      },
+      {
+        "element": "dateMenu",
+        "visible": true,
+        "position": "stackedBR"
+      },
+      {
+        "element": "systemMenu",
+        "visible": false,
+        "position": "stackedBR"
+      },
+      {
+        "element": "desktopButton",
+        "visible": true,
+        "position": "stackedBR"
+      }
+    ]
+  },
+  "appicon-margin": 4,
+  "dot-style-focused": "DASHES",
+  "show-showdesktop-hover": true,
+  "showdesktop-button-width": 10,
+  "desktop-line-use-custom-color": true,
+  "desktop-line-custom-color": "rgb(0,0,0)",
+  "window-preview-size": 180,
+  "context-menu-entries": [
+    {
+      "title": "Terminal",
+      "cmd": "TERMINALSETTINGS"
+    },
+    {
+      "title": "System monitor",
+      "cmd": "omarchy-launch-or-focus-tui btop"
+    },
+    {
+      "title": "Files",
+      "cmd": "nautilus --new-window"
+    }
+  ],
+  "intellihide": true,
+  "intellihide-hide-from-windows": true,
+  "intellihide-behaviour": "ALL_WINDOWS",
+  "intellihide-hide-from-monitor-windows": false,
+  "intellihide-use-pointer": true,
+  "intellihide-use-pointer-limit-size": true,
+  "intellihide-revealed-hover": true,
+  "intellihide-revealed-hover-limit-size": false,
+  "intellihide-use-pressure": false,
+  "intellihide-pressure-threshold": 100,
+  "intellihide-pressure-time": 1000,
+  "intellihide-show-in-fullscreen": true,
+  "intellihide-show-on-notification": true,
+  "intellihide-only-secondary": false,
+  "intellihide-animation-time": 200,
+  "intellihide-close-delay": 500,
+  "intellihide-reveal-delay": 150,
+  "intellihide-enable-start-delay": 1000,
+  "intellihide-key-toggle": [
+    "<Super>i"
+  ],
+  "intellihide-key-toggle-text": "<Super>i",
+  "intellihide-persisted-state": 0
+}

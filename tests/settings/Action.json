@@ -1,0 +1,293 @@
+{
+  "stockgs-keep-top-panel": true,
+  "panel-positions": {
+    "*": "BOTTOM"
+  },
+  "panel-sizes": {
+    "*": 45
+  },
+  "panel-lengths": {
+    "*": 100
+  },
+  "panel-anchors": {
+    "*": "MIDDLE"
+  },
+  "panel-element-positions": {
+    "*": [
+      {
+        "element": "showAppsButton",
+        "visible": true,
+        "position": "stackedTL"
+      },
+      {
+        "element": "activitiesButton",
+        "visible": false,
+        "position": "centered"
+      },
+      {
+        "element": "leftBox",
+        "visible": true,
+        "position": "stackedTL"
+      },
+      {
+        "element": "taskbar",
+        "visible": true,
+        "position": "centerMonitor"
+      },
+      {
+        "element": "centerBox",
+        "visible": true,
+        "position": "centered"
+      },
+      {
+        "element": "rightBox",
+        "visible": false,
+        "position": "stackedBR"
+      },
+      {
+        "element": "dateMenu",
+        "visible": true,
+        "position": "stackedBR"
+      },
+      {
+        "element": "systemMenu",
+        "visible": false,
+        "position": "stackedBR"
+      },
+      {
+        "element": "desktopButton",
+        "visible": true,
+        "position": "stackedBR"
+      }
+    ]
+  },
+  "appicon-margin": 4,
+  "dot-style-focused": "DASHES",
+  "show-showdesktop-hover": true,
+  "showdesktop-button-width": 10,
+  "desktop-line-use-custom-color": true,
+  "desktop-line-custom-color": "rgb(0,0,0)",
+  "window-preview-size": 180,
+  "context-menu-entries": [
+    {
+      "title": "Terminal",
+      "cmd": "TERMINALSETTINGS"
+    },
+    {
+      "title": "System monitor",
+      "cmd": "omarchy-launch-or-focus-tui btop"
+    },
+    {
+      "title": "Files",
+      "cmd": "nautilus --new-window"
+    }
+  ],
+  "click-action": "TOGGLE-SHOWPREVIEW",
+  "shift-click-action": "QUIT",
+  "middle-click-action": "LAUNCH",
+  "shift-middle-click-action": "LAUNCH",
+  "customize-click": true,
+  "minimize-shift": true,
+  "activate-single-window": true,
+  "scroll-panel-action": "CHANGE_VOLUME",
+  "scroll-panel-delay": 0,
+  "scroll-panel-show-ws-popup": true,
+  "scroll-icon-action": "CYCLE_WINDOWS",
+  "scroll-icon-delay": 0,
+  "hot-keys": true,
+  "hotkey-prefix-text": "Super",
+  "shortcut-num-keys": "BOTH",
+  "app-hotkey-1": [
+    "<Super>1"
+  ],
+  "app-shift-hotkey-1": [
+    "<Shift><Super>1"
+  ],
+  "app-ctrl-hotkey-1": [
+    "<Ctrl><Super>1"
+  ],
+  "hotkeys-overlay-combo": "ALWAYS",
+  "overlay-timeout": 750,
+  "shortcut": [
+    "<Super>q"
+  ],
+  "shortcut-text": "<Super>q",
+  "shortcut-timeout": 2000,
+  "shortcut-overlay-on-secondary": false,
+  "shortcut-previews": true,
+  "secondarymenu-contains-appmenu": true,
+  "secondarymenu-contains-showdetails": false,
+  "panel-context-menu-commands": [],
+  "panel-context-menu-titles": [],
+  "app-ctrl-hotkey-2": [
+    "<Ctrl><Super>2"
+  ],
+  "app-ctrl-hotkey-3": [
+    "<Ctrl><Super>3"
+  ],
+  "app-ctrl-hotkey-4": [
+    "<Ctrl><Super>4"
+  ],
+  "app-ctrl-hotkey-5": [
+    "<Ctrl><Super>5"
+  ],
+  "app-ctrl-hotkey-6": [
+    "<Ctrl><Super>6"
+  ],
+  "app-ctrl-hotkey-7": [
+    "<Ctrl><Super>7"
+  ],
+  "app-ctrl-hotkey-8": [
+    "<Ctrl><Super>8"
+  ],
+  "app-ctrl-hotkey-9": [
+    "<Ctrl><Super>9"
+  ],
+  "app-ctrl-hotkey-10": [
+    "<Ctrl><Super>0"
+  ],
+  "app-shift-hotkey-2": [
+    "<Shift><Super>2"
+  ],
+  "app-shift-hotkey-3": [
+    "<Shift><Super>3"
+  ],
+  "app-shift-hotkey-4": [
+    "<Shift><Super>4"
+  ],
+  "app-shift-hotkey-5": [
+    "<Shift><Super>5"
+  ],
+  "app-shift-hotkey-6": [
+    "<Shift><Super>6"
+  ],
+  "app-shift-hotkey-7": [
+    "<Shift><Super>7"
+  ],
+  "app-shift-hotkey-8": [
+    "<Shift><Super>8"
+  ],
+  "app-shift-hotkey-9": [
+    "<Shift><Super>9"
+  ],
+  "app-shift-hotkey-10": [
+    "<Shift><Super>0"
+  ],
+  "app-hotkey-2": [
+    "<Super>2"
+  ],
+  "app-hotkey-3": [
+    "<Super>3"
+  ],
+  "app-hotkey-4": [
+    "<Super>4"
+  ],
+  "app-hotkey-5": [
+    "<Super>5"
+  ],
+  "app-hotkey-6": [
+    "<Super>6"
+  ],
+  "app-hotkey-7": [
+    "<Super>7"
+  ],
+  "app-hotkey-8": [
+    "<Super>8"
+  ],
+  "app-hotkey-9": [
+    "<Super>9"
+  ],
+  "app-hotkey-10": [
+    "<Super>0"
+  ],
+  "app-ctrl-hotkey-kp-1": [
+    "<Ctrl><Super>KP_1"
+  ],
+  "app-ctrl-hotkey-kp-2": [
+    "<Ctrl><Super>KP_2"
+  ],
+  "app-ctrl-hotkey-kp-3": [
+    "<Ctrl><Super>KP_3"
+  ],
+  "app-ctrl-hotkey-kp-4": [
+    "<Ctrl><Super>KP_4"
+  ],
+  "app-ctrl-hotkey-kp-5": [
+    "<Ctrl><Super>KP_5"
+  ],
+  "app-ctrl-hotkey-kp-6": [
+    "<Ctrl><Super>KP_6"
+  ],
+  "app-ctrl-hotkey-kp-7": [
+    "<Ctrl><Super>KP_7"
+  ],
+  "app-ctrl-hotkey-kp-8": [
+    "<Ctrl><Super>KP_8"
+  ],
+  "app-ctrl-hotkey-kp-9": [
+    "<Ctrl><Super>KP_9"
+  ],
+  "app-ctrl-hotkey-kp-10": [
+    "<Ctrl><Super>KP_0"
+  ],
+  "app-shift-hotkey-kp-1": [
+    "<Shift><Super>KP_1"
+  ],
+  "app-shift-hotkey-kp-2": [
+    "<Shift><Super>KP_2"
+  ],
+  "app-shift-hotkey-kp-3": [
+    "<Shift><Super>KP_3"
+  ],
+  "app-shift-hotkey-kp-4": [
+    "<Shift><Super>KP_4"
+  ],
+  "app-shift-hotkey-kp-5": [
+    "<Shift><Super>KP_5"
+  ],
+  "app-shift-hotkey-kp-6": [
+    "<Shift><Super>KP_6"
+  ],
+  "app-shift-hotkey-kp-7": [
+    "<Shift><Super>KP_7"
+  ],
+  "app-shift-hotkey-kp-8": [
+    "<Shift><Super>KP_8"
+  ],
+  "app-shift-hotkey-kp-9": [
+    "<Shift><Super>KP_9"
+  ],
+  "app-shift-hotkey-kp-10": [
+    "<Shift><Super>KP_0"
+  ],
+  "app-hotkey-kp-1": [
+    "<Super>KP_1"
+  ],
+  "app-hotkey-kp-2": [
+    "<Super>KP_2"
+  ],
+  "app-hotkey-kp-3": [
+    "<Super>KP_3"
+  ],
+  "app-hotkey-kp-4": [
+    "<Super>KP_4"
+  ],
+  "app-hotkey-kp-5": [
+    "<Super>KP_5"
+  ],
+  "app-hotkey-kp-6": [
+    "<Super>KP_6"
+  ],
+  "app-hotkey-kp-7": [
+    "<Super>KP_7"
+  ],
+  "app-hotkey-kp-8": [
+    "<Super>KP_8"
+  ],
+  "app-hotkey-kp-9": [
+    "<Super>KP_9"
+  ],
+  "app-hotkey-kp-10": [
+    "<Super>KP_0"
+  ]
+}

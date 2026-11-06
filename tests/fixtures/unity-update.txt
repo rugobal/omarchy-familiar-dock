@@ -1,0 +1,24 @@
+signal time=1730000000.123 sender=:1.49 -> destination=(null destination) serial=9 path=/com/canonical/unity/launcherentry/12; interface=com.canonical.Unity.LauncherEntry; member=Update
+   string "application://org.gnome.Nautilus.desktop"
+   array [
+      dict entry(
+         string "count"
+         variant             int64 7
+      )
+      dict entry(
+         string "count-visible"
+         variant             boolean true
+      )
+      dict entry(
+         string "progress"
+         variant             double 0.42
+      )
+      dict entry(
+         string "progress-visible"
+         variant             boolean true
+      )
+      dict entry(
+         string "urgent"
+         variant             boolean false
+      )
+   ]

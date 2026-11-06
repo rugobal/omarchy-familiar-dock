@@ -1,0 +1,11 @@
+# Every type is listed: a directory with a qmldir takes its types from this
+# file alone, and a sibling missing here is "not a type" to every user.
+singleton Palette 1.0 Palette.qml
+Chip 1.0 Chip.qml
+Group 1.0 Group.qml
+IconButton 1.0 IconButton.qml
+KeyCap 1.0 KeyCap.qml
+NavRow 1.0 NavRow.qml
+Tile 1.0 Tile.qml
+ActionRow 1.0 ActionRow.qml
+ChoiceDialog 1.0 ChoiceDialog.qml
