@@ -3,7 +3,7 @@
   "id": "rugobal.familiar-dock",
   "name": "Familiar Dock",
   "version": "0.1.0",
-  "author": "Ruben Gomez",
+  "author": "rugobal",
   "description": "A Windows-style taskbar or a macOS-style dock for Omarchy, inspired by GNOME's Dash to Panel",
   "license": "GPL-2.0-or-later",
   "kinds": ["service", "menu"],
