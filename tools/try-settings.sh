@@ -7,6 +7,7 @@ case "$mode" in Position|Style|Behavior|Action|Intellihide|Fine-Tune|restore) ;;
 state="$HOME/.local/state/familiar-dock"
 file="$HOME/.config/omarchy/familiar-dock.json"
 mkdir -p "$state" "$(dirname "$file")"
+chmod 700 "$state"
 exec 9>"$state/settings-test.lock"; flock -x 9
 backup="$state/settings-under-test.bak"
 active="$state/settings-test-active"

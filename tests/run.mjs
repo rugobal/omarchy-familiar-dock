@@ -625,6 +625,12 @@ test('fader journals before mutation, restores both exact values, retries errors
   fs.rmSync(f.env.TEST_FAIL); execute('cleanup','second'); assert(!fs.existsSync(journal));
   execute('step','second',{'0xa':0}); fs.writeFileSync(f.clients,'[]'); execute('step','second',{}); assert(!fs.existsSync(journal));
 }));
+test('the fade journal is the user\'s alone under an open umask', () => compositorFixture(f => {
+  const state=path.join(f.home,'.local/state/familiar-dock'), mode=file=>fs.statSync(file).mode&0o777;
+  for(const [step,desired] of [['init','{}'],['step','{"0xa":0.2}']]) { const r=f.execute('umask 022\n'+F.script,[f.home,step,'owner',desired]); assert.equal(r.status,0,r.stderr); }
+  assert.equal(mode(state),0o700);
+  for(const name of ['faded.json','fader.lock','fader-owner']) assert.equal(mode(path.join(state,name)),0o600,name);
+}));
 test('removal cleanup restores a fade only while the plugin is still off', () => compositorFixture(f => {
   const journal=path.join(f.home,'.local/state/familiar-dock/faded.json'), cfg=path.join(f.home,'.config/omarchy/shell.json');
   fs.mkdirSync(path.dirname(cfg),{recursive:true});
@@ -823,7 +829,8 @@ esac`],['sleep',':']]) {
       const file=path.join(bin,name); fs.writeFileSync(file,'#!/bin/bash\n'+body+'\n'); fs.chmodSync(file,0o755);
     }
     const env={...process.env,PATH:`${bin}:${process.env.PATH}`,TEST_CALLS:calls,TEST_SHELL_CONFIG:config,TEST_CLOCK_STUCK:stuck,TEST_CLOCK_LATE:late,TEST_CLOCK_SILENT:silent,TEST_CLOCK_SETFAIL:setfail};
-    const attempt=(mode,next)=>spawnSync('bash',['-c',Clock.script,'test',stateHome,mode,JSON.stringify(next??null)],{env,encoding:'utf8'});
+    // An open umask, as most users have: the scripts must not rely on it.
+    const attempt=(mode,next)=>spawnSync('bash',['-c','umask 022\n'+Clock.script,'test',stateHome,mode,JSON.stringify(next??null)],{env,encoding:'utf8'});
     const exec=(mode,next)=> {const result=attempt(mode,next);assert.equal(result.status,0,result.stderr);};
     const marker=path.join(stateHome,'.local/state/familiar-dock/clock-hidden');
     const read=()=>fs.existsSync(calls)?fs.readFileSync(calls,'utf8').trim().split('\n'):[];
@@ -1029,6 +1036,50 @@ test('a clock whose section has shrunk is put back at its end with its settings'
   f.exec('hide'); assert(!fs.existsSync(f.marker));
   deepEqual(f.layout(),{center:[{id:'omarchy.clock',format:'HH:mm'}]});
 }));
+const modeOf=file=>fs.statSync(file).mode&0o777;
+test('the clock stash is the user\'s alone, also in a state directory an earlier version left open', () => clockFixture(f => {
+  const entry={id:'omarchy.clock',format:'HH:mm'}, state=path.dirname(f.marker);
+  f.write({...dockOn,bar:{layout:{right:[entry]}}});
+  fs.mkdirSync(state,{recursive:true}); fs.chmodSync(state,0o755);
+  f.exec('show'); deepEqual(f.stash().entry,entry);
+  assert.equal(modeOf(state),0o700); assert.equal(modeOf(f.marker),0o600); assert.equal(modeOf(path.join(state,'clock.lock')),0o600);
+  f.exec('update',{...entry,format:'H:mm'}); assert.equal(f.stash().entry.format,'H:mm'); assert.equal(modeOf(f.marker),0o600);
+}));
+const Lifecycle = library('services/Lifecycle.js');
+test('the state directory is made private; its parents keep the user\'s umask; one it cannot make stops the script', () => {
+  const dir=fs.mkdtempSync(path.join(root,'tests/.private-'));
+  try {
+    const state=path.join(dir,'parent/familiar-dock');
+    const run=target=>spawnSync('bash',['-c','umask 022; state=$1; '+Lifecycle.privateState+'; : > "$state/file"; echo went on','test',target],{encoding:'utf8'});
+    let r=run(state); assert.equal(r.status,0,r.stderr);
+    assert.equal(modeOf(state),0o700); assert.equal(modeOf(path.join(state,'file')),0o600); assert.equal(modeOf(path.dirname(state)),0o755);
+    fs.chmodSync(state,0o755); r=run(state); assert.equal(r.status,0,r.stderr); assert.equal(modeOf(state),0o700);
+    fs.writeFileSync(path.join(dir,'blocked'),''); r=run(path.join(dir,'blocked/familiar-dock'));
+    assert.equal(r.status,1); assert(!r.stdout.includes('went on'));
+    // A cleanup that removes the directory between mkdir and chmod: the lock
+    // starts over (and a cleanup waiter finds nothing left to do). A chmod
+    // refused on a directory that is still there stops it.
+    const bin=path.join(dir,'bin'), once=path.join(dir,'once'), refuse=path.join(dir,'refuse'); fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin,'chmod'),`#!/bin/bash
+[[ ! -e $TEST_REFUSE ]] || { echo 'chmod: operation not permitted' >&2; exit 1; }
+if [[ ! -e $TEST_ONCE ]]; then : > "$TEST_ONCE"; rm -rf -- "\${@: -1}"; echo 'chmod: cannot access' >&2; exit 1; fi
+exec /usr/bin/chmod "$@"
+`); fs.chmodSync(path.join(bin,'chmod'),0o755);
+    const env={...process.env,PATH:`${bin}:${process.env.PATH}`,TEST_ONCE:once,TEST_REFUSE:refuse};
+    const locked=mode=>spawnSync('bash',['-c','umask 022; state=$1; mode=$2\n'+Lifecycle.lock+'\necho locked','test',state,mode],{env,encoding:'utf8'});
+    r=locked('hide'); assert.equal(r.status,0,r.stderr); assert.equal(r.stdout.trim(),'locked'); assert(fs.existsSync(once)); assert.equal(modeOf(state),0o700);
+    fs.rmSync(once); r=locked('cleanup'); assert.equal(r.status,0,r.stderr); assert.equal(r.stdout,''); assert(!fs.existsSync(state));
+    fs.mkdirSync(state); fs.writeFileSync(refuse,''); r=locked('hide'); assert.equal(r.status,1); assert.equal(r.stdout,'');
+  } finally { fs.rmSync(dir,{recursive:true,force:true}); }
+  // Every script that makes the directory goes through privateState.
+  const sources=[];
+  const walk=d=>{ for(const e of fs.readdirSync(d,{withFileTypes:true})) {
+    if(e.isDirectory()) { if(!['tests','docs','node_modules'].includes(e.name) && !e.name.startsWith('.')) walk(path.join(d,e.name)); }
+    else if(/\.(js|qml)$/.test(e.name)) sources.push(path.join(d,e.name)); } };
+  walk(root);
+  for(const file of sources) if(!file.endsWith('services/Lifecycle.js')) assert(!/mkdir/.test(fs.readFileSync(file,'utf8')),path.relative(root,file)+' makes a directory without privateState');
+  assert.match(fs.readFileSync(path.join(root,'services/Intellihide.qml'),'utf8'),/state=\$\(dirname "\$1"\); ' \+ Lifecycle\.privateState \+ '; printf/);
+});
 const Colors = library('services/IconColors.js');
 test('WCAG channel conversion and contrast ratios have known endpoints', () => {
   assert.equal(Colors.luminance([0,0,0]),0);

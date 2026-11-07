@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import "Intellihide.js" as Logic
 import "Proximity.js" as Proximity
+import "Lifecycle.js" as Lifecycle
 
 Item {
     id: root
@@ -69,7 +70,7 @@ Item {
     }
     Process {
         id: save
-        command: ["bash", "-c", 'set -e; mkdir -p "$(dirname "$1")"; printf "%s\\n" "$2" > "$1.tmp"; mv -f "$1.tmp" "$1"', "familiar-dock", root.statePath, JSON.stringify({held: root.held})]
+        command: ["bash", "-c", 'set -e; state=$(dirname "$1"); ' + Lifecycle.privateState + '; printf "%s\\n" "$2" > "$1.tmp"; mv -f "$1.tmp" "$1"', "familiar-dock", root.statePath, JSON.stringify({held: root.held})]
         onExited: if (root.savePending) saveDelay.restart()
     }
     Component.onCompleted: { held = config.get("intellihide-persisted-state") === 1; update() }

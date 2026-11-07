@@ -1,4 +1,5 @@
 .pragma library
+.import "Lifecycle.js" as Lifecycle
 
 function targets(windows, visibleWorkspaces, exceptAddress, opacity) {
     var out = {}
@@ -35,7 +36,7 @@ var script = [
     "set -euo pipefail",
     "state_home=$1; mode=$2; token=$3; desired=$4; goals=${5:-$desired}",
     "state=\"$state_home/.local/state/familiar-dock\"",
-    "mkdir -p \"$state\"",
+    Lifecycle.privateState,
     "exec 9>\"$state/fader.lock\"",
     "flock -x 9",
     "# The detached removal cleanup takes over whatever is faded, but only while",
