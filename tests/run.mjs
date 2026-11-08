@@ -601,6 +601,98 @@ test('fresh minimize/restore batch building, stale tag cleanup, source focus and
   r=f.execute(W.mutationScript,[JSON.stringify(W.operations('restore',two,3))]); assert.equal(r.status,0,r.stderr); assert.match(f.read(),/workspace = "3"/);
   assert(!f.read().includes('address:0xb')); // closed windows dropped
 }));
+// A Hyprland that keeps the windows, the active one, the focused monitor and
+// each monitor's open special workspace, and acts on moves, monitor focus and
+// toggles as Hyprland does: a toggle acts on the focused monitor only.
+function minimizedFixture(run) {
+  const dir=fs.mkdtempSync(path.join(root,'tests/.reclaim-'));
+  try {
+    const bin=path.join(dir,'bin'); fs.mkdirSync(bin);
+    const file=name=>path.join(dir,name+'.json'), calls=path.join(dir,'calls');
+    fs.writeFileSync(path.join(bin,'hyprctl'),`#!/bin/bash
+T=$TEST_DIR
+monitors() { jq "$1" "$T/monitors.json" > "$T/m.tmp"; mv "$T/m.tmp" "$T/monitors.json"; }
+case "$1" in
+monitors) cat "$T/monitors.json" ;;
+activewindow) cat "$T/active.json" ;;
+clients) cat "$T/clients.json" ;;
+dispatch) printf 'dispatch %s\\n' "$2" >> "$T/calls" ;;
+--batch)
+  printf 'batch %s\\n' "$2" >> "$T/calls"
+  IFS=';' read -ra parts <<<"$2"
+  for part in "\${parts[@]}"; do
+    if [[ $part =~ window\\.move\\(\\{\\ workspace\\ =\\ \\"([0-9]+)\\".*address:(0x[0-9a-f]+) ]]; then
+      jq --arg a "\${BASH_REMATCH[2]}" --argjson w "\${BASH_REMATCH[1]}" 'map(if .address == $a then .workspace = {id: $w, name: ($w | tostring)} else . end)' "$T/clients.json" > "$T/c.tmp"; mv "$T/c.tmp" "$T/clients.json"
+      # The last window out closes the workspace.
+      jq -e 'any(.[]; .workspace.name == "special:minimized")' "$T/clients.json" >/dev/null || monitors 'map(.specialWorkspace.name = "")'
+    elif [[ $part =~ focus\\(\\{\\ monitor\\ =\\ \\"([^\\"]+)\\" ]]; then
+      monitors "map(.focused = (.name == \\"\${BASH_REMATCH[1]}\\"))"
+    elif [[ $part == *'toggle_special("minimized")'* ]]; then
+      monitors 'map(if .focused then .specialWorkspace.name |= (if . == "special:minimized" then "" else "special:minimized" end) else . end)'
+    fi
+  done
+  echo ok ;;
+*) exit 1 ;;
+esac
+`); fs.chmodSync(path.join(bin,'hyprctl'),0o755);
+    fs.writeFileSync(path.join(bin,'sleep'),'#!/bin/sh\nexit 0\n'); fs.chmodSync(path.join(bin,'sleep'),0o755);
+    const env={...process.env,PATH:`${bin}:${process.env.PATH}`,TEST_DIR:dir};
+    const minimized=(address,from)=>({address,monitor:0,workspace:{id:-97,name:'special:minimized'},tags:['omarchy-floating-workspace',`omarchy-minimized-from-${from}`]});
+    const set=(name,value)=>fs.writeFileSync(file(name),JSON.stringify(value));
+    const get=name=>JSON.parse(fs.readFileSync(file(name)));
+    set('monitors',[{id:0,name:'DP-3',focused:true,activeWorkspace:{id:1},specialWorkspace:{name:'special:minimized'}}]);
+    const read=()=>fs.existsSync(calls)?fs.readFileSync(calls,'utf8').trim().split('\n'):[];
+    run({minimized,set,get,calls:read,
+      reclaim:()=>{ const r=spawnSync('bash',['-c',W.reclaimScript,'test',W.mutationScript],{env,encoding:'utf8'}); assert.equal(r.status,0,r.stderr); },
+      shown:()=>get('monitors').filter(m=>m.specialWorkspace.name==='special:minimized').map(m=>m.name),
+      // Where the toggle and the restore batch fall among the calls.
+      order:address=>{ const c=read(); return {toggle:c.findIndex(x=>x.includes('toggle_special')), restore:c.findIndex(x=>x.includes(`address:${address}" })`) && x.includes('window.move'))}; }});
+  } finally { fs.rmSync(dir,{recursive:true,force:true}); }
+}
+test('a minimized window focused from outside the panel comes back alone; the others stay minimized out of sight', () => minimizedFixture(f => {
+  // Show Desktop minimized both; a bar widget then focused 0xa where it waited.
+  f.set('clients',[f.minimized('0xa',2),f.minimized('0xb',1)]); f.set('active',f.minimized('0xa',2));
+  f.reclaim();
+  const a=f.get('clients').find(c=>c.address==='0xa'), b=f.get('clients').find(c=>c.address==='0xb');
+  assert.equal(a.workspace.name,'2','back where it was minimized from'); assert.equal(b.workspace.name,'special:minimized');
+  deepEqual(f.shown(),[],'the minimized workspace is hidden again');
+  const calls=f.calls(), all=calls.join('\n'), at=f.order('0xa');
+  assert.match(all,/tag = "-omarchy-minimized-from-2", window = "address:0xa"/); assert(!all.includes('address:0xb'));
+  assert.equal(calls.filter(c=>c.includes('toggle_special')).length,1); assert.match(all,/focus\(\{ monitor = "DP-3" \}\);dispatch hl\.dsp\.workspace\.toggle_special\("minimized"\)/);
+  // Hidden while the window is still in it, then the window comes back and
+  // takes the focus in that same batch: nothing focuses it again afterwards.
+  assert(at.toggle>=0 && at.toggle<at.restore,calls.join('\n'));
+  assert.match(calls[at.restore],/hl\.dsp\.focus\(\{ window = "address:0xa" \}\)/);
+  assert(!calls.some(c=>c.startsWith('dispatch ')),'no focus after the restore');
+}));
+test('a single minimized window comes back and the workspace stays closed', () => minimizedFixture(f => {
+  f.set('clients',[f.minimized('0xa',1)]); f.set('active',f.minimized('0xa',1));
+  f.reclaim();
+  assert.equal(f.get('clients')[0].workspace.name,'1'); deepEqual(f.shown(),[]);
+  const at=f.order('0xa'); assert(at.toggle>=0 && at.toggle<at.restore);
+  assert.equal(f.calls().filter(c=>c.includes('toggle_special')).length,1,'never toggled open again, empty');
+}));
+test('with two monitors the workspace is hidden where it shows, never opened on the other; an untagged window returns to its own monitor\'s workspace', () => minimizedFixture(f => {
+  f.set('monitors',[{id:0,name:'DP-3',focused:false,activeWorkspace:{id:1},specialWorkspace:{name:'special:minimized'}},
+    {id:1,name:'DP-4',focused:true,activeWorkspace:{id:5},specialWorkspace:{name:''}}]);
+  const untagged={...f.minimized('0xa',1),tags:[]};
+  f.set('clients',[untagged,f.minimized('0xb',1)]); f.set('active',untagged);
+  f.reclaim();
+  deepEqual(f.shown(),[]); assert.equal(f.get('clients')[0].workspace.name,'1','DP-3 shows workspace 1, DP-4 workspace 5');
+  assert(!f.calls().some(c=>c.includes('monitor = "DP-4"')));
+}));
+test('the minimized workspace shown with no minimized window focused is only hidden; one not shown is left alone', () => minimizedFixture(f => {
+  f.set('clients',[f.minimized('0xa',1)]); f.set('active',{});
+  f.reclaim();
+  deepEqual(f.shown(),[]); assert.equal(f.get('clients')[0].workspace.name,'special:minimized');
+  deepEqual(f.calls(),['batch dispatch hl.dsp.focus({ monitor = "DP-3" });dispatch hl.dsp.workspace.toggle_special("minimized")']);
+  f.set('active',f.minimized('0xa',1));
+  const before=f.calls().length; f.reclaim(); assert.equal(f.calls().length,before,'not shown: nothing is touched');
+  assert.equal(f.get('clients')[0].workspace.name,'special:minimized');
+  // Wired to Hyprland's event, and run once at start.
+  assert.match(fs.readFileSync(path.join(root,'Main.qml'),'utf8'),/event\.name === "activespecial" && String\(event\.data\)\.split\(","\)\[0\] === "special:minimized"\) windowActions\.reclaimMinimized\(\)/);
+  assert.match(fs.readFileSync(path.join(root,'services/WindowActions.qml'),'utf8'),/Component\.onCompleted: reclaimMinimized\(\)/);
+}));
 test('fader journals before mutation, restores both exact values, retries errors and recovers crashes', () => compositorFixture(f => {
   const execute=(mode,owner,desired={})=>{ const r=f.execute(F.script,[f.home,mode,owner,JSON.stringify(desired)]); assert.equal(r.status,0,r.stderr); return r; };
   const journal=path.join(f.home,'.local/state/familiar-dock/faded.json');

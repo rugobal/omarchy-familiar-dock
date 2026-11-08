@@ -114,6 +114,10 @@ Item {
     function noteWindowFocus(address) {
         if (!desktopBatchRunning) desktopLists = Logic.desktopStateAfterFocus(desktopLists, Date.now(), desktopGuardUntil, address)
     }
+    // The minimized workspace came into view: see Logic.reclaimScript. Also run
+    // once at start, for one left open while the shell was not running.
+    function reclaimMinimized() { runScript(Logic.reclaimScript, [Logic.mutationScript]) }
+    Component.onCompleted: reclaimMinimized()
     function hasDesktopList(panel) { return !!(desktopLists[panel.monitorName] && desktopLists[panel.monitorName].length) }
     function switchWorkspace(panel, delta) {
         // m+/-1 is the installed 0.56 per-monitor relative form. Focus the panel's

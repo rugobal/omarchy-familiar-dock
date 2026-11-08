@@ -167,6 +167,7 @@ Item {
         target: Hyprland
         function onRawEvent(event) {
             if (event.name === "activewindowv2") windowActions.noteWindowFocus(event.data)
+            else if (event.name === "activespecial" && String(event.data).split(",")[0] === "special:minimized") windowActions.reclaimMinimized()
         }
     }
 

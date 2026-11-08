@@ -130,6 +130,38 @@ var mutationScript = [
     "fi",
     ""
 ].join("\n")
+
+// Something outside the panel focused a minimized window: Omarchy's
+// launch-or-focus (a bar widget opening its app), an Alt+Tab switcher. Hyprland
+// then shows the whole minimized workspace on that monitor, every minimized
+// window with it. The focused window comes back to its workspace, as a click on
+// it in the taskbar would bring it, and the workspace is hidden again with the
+// others still minimized in it. $1 is mutationScript, run for that window.
+var reclaimScript = [
+    "set -euo pipefail",
+    "restore=$1",
+    "monitors=$(hyprctl monitors -j)",
+    "open() { jq -r '.[] | select(.specialWorkspace.name == \"special:minimized\") | .name' <<<\"$1\"; }",
+    "shown=$(open \"$monitors\")",
+    "[[ -n $shown ]] || exit 0",
+    "active=$(hyprctl activewindow -j)",
+    "addr=$(jq -r 'select(type == \"object\" and .workspace.name? == \"special:minimized\") | .address // empty' <<<\"$active\" 2>/dev/null || :)",
+    "[[ $addr =~ ^0x[0-9a-fA-F]+$ ]] || addr=''",
+    // Hidden first, with the focused window still in it: emptied first, the
+    // workspace would close by itself, and a toggle would open it again, empty.
+    // toggle_special acts on the focused monitor; each one is asked again just
+    // before, in case it was hidden meanwhile.
+    "for monitor in $shown; do",
+    "  [[ $monitor =~ ^[A-Za-z0-9._-]+$ ]] && open \"$(hyprctl monitors -j)\" | grep -xF \"$monitor\" >/dev/null || continue",
+    "  hyprctl --batch \"dispatch hl.dsp.focus({ monitor = \\\"$monitor\\\" });dispatch hl.dsp.workspace.toggle_special(\\\"minimized\\\")\" >/dev/null",
+    "done",
+    "[[ -n $addr ]] || exit 0",
+    // Then the window comes back and takes the focus, in one batch: nothing
+    // focuses it later, after a minimize the user may have made since.
+    "ws=$(jq -r --argjson m \"$(jq '.monitor // -1' <<<\"$active\")\" 'first(.[] | select(.id == $m) | .activeWorkspace.id | select(. > 0)) // 1' <<<\"$monitors\")",
+    "exec bash -c \"$restore\" familiar-dock-restore \"$(jq -nc --arg a \"$addr\" --argjson w \"$ws\" '[{mode: \"restore\", address: $a, workspace: $w}]')\"",
+    ""
+].join("\n")
 function desktopStateAfterFocus(state, now, guard, focusedAddress) {
     return now <= guard || !focusedAddress ? state : {}
 }
