@@ -1,11 +1,28 @@
 .pragma library
 
 // The state directory can hold what the user keeps private, such as the
-// settings of the clock it stashes. Only its owner may enter it, and what is
-// made in it from here on is theirs alone. chmod also closes a directory an
-// earlier version left open. The parents keep the user's own umask. `gone`
-// runs when the directory went away between mkdir and chmod.
-function privateDir(gone) { return 'mkdir -p "$state" || exit 1; chmod 700 "$state" || { [[ -e $state ]] && exit 1; ' + gone + '; }; umask 077' }
+// birth year and life expectancy stashed with the clock. Parents keep the
+// user's own umask. The directory itself is created mode 0700, so it is never
+// briefly world-traversable, and chmod closes one an earlier version left
+// open. Files already in it are closed to 0600 without following a symlink
+// out of the directory. umask 077 then stays in effect, so a file written
+// afterwards is owner-only from the moment it is created. chmod after the
+// write would leave a window. `gone` runs when the directory went away
+// between mkdir and chmod; the caller's umask is put back first so a retry
+// still makes the parents the user's way.
+function privateDir(gone) {
+    return [
+        '__umask=$(umask)',
+        'mkdir -p -- "$(dirname -- "$state")" || exit 1',
+        'umask 077',
+        'mkdir -p -m 700 -- "$state" || exit 1',
+        'chmod 700 -- "$state" || { umask "$__umask"; [[ -e $state ]] && exit 1; ' + gone + '; }',
+        'for __f in "$state"/* "$state"/.[!.]* "$state"/..?*; do',
+        '  [[ -f "$__f" && ! -L "$__f" ]] || continue',
+        '  chmod 600 -- "$__f" || { [[ -e "$__f" ]] && exit 1; }',
+        'done'
+    ].join('\n')
+}
 var privateState = privateDir('exit 1')
 
 // All clock/dock mutations and final cleanup share this lock. Cleanup removes

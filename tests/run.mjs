@@ -1130,12 +1130,21 @@ test('a clock whose section has shrunk is put back at its end with its settings'
 }));
 const modeOf=file=>fs.statSync(file).mode&0o777;
 test('the clock stash is the user\'s alone, also in a state directory an earlier version left open', () => clockFixture(f => {
-  const entry={id:'omarchy.clock',format:'HH:mm'}, state=path.dirname(f.marker);
+  const entry={id:'omarchy.clock',format:'HH:mm',birthYear:1990,lifeExpectancy:80}, state=path.dirname(f.marker);
   f.write({...dockOn,bar:{layout:{right:[entry]}}});
   fs.mkdirSync(state,{recursive:true}); fs.chmodSync(state,0o755);
   f.exec('show'); deepEqual(f.stash().entry,entry);
   assert.equal(modeOf(state),0o700); assert.equal(modeOf(f.marker),0o600); assert.equal(modeOf(path.join(state,'clock.lock')),0o600);
   f.exec('update',{...entry,format:'H:mm'}); assert.equal(f.stash().entry.format,'H:mm'); assert.equal(modeOf(f.marker),0o600);
+  // A confirmed stash is not rewritten. An earlier 0644 file, and its temp
+  // file, are still closed, and the birth year in it is left byte for byte.
+  const kept=fs.readFileSync(f.marker);
+  fs.chmodSync(state,0o755); fs.chmodSync(f.marker,0o644); fs.chmodSync(path.join(state,'clock.lock'),0o644);
+  fs.writeFileSync(f.marker+'.tmp',kept); fs.chmodSync(f.marker+'.tmp',0o644);
+  f.exec('show');
+  assert.equal(modeOf(state),0o700); assert.equal(modeOf(f.marker),0o600); assert.equal(modeOf(f.marker+'.tmp'),0o600);
+  assert.equal(modeOf(path.join(state,'clock.lock')),0o600);
+  assert.deepEqual(fs.readFileSync(f.marker),kept);
 }));
 const Lifecycle = library('services/Lifecycle.js');
 test('the state directory is made private; its parents keep the user\'s umask; one it cannot make stops the script', () => {
@@ -1145,13 +1154,39 @@ test('the state directory is made private; its parents keep the user\'s umask; o
     const run=target=>spawnSync('bash',['-c','umask 022; state=$1; '+Lifecycle.privateState+'; : > "$state/file"; echo went on','test',target],{encoding:'utf8'});
     let r=run(state); assert.equal(r.status,0,r.stderr);
     assert.equal(modeOf(state),0o700); assert.equal(modeOf(path.join(state,'file')),0o600); assert.equal(modeOf(path.dirname(state)),0o755);
+    // A file created after the helper returns is already 0600, so the helper's
+    // chmod of existing files is not what made it private.
     fs.chmodSync(state,0o755); r=run(state); assert.equal(r.status,0,r.stderr); assert.equal(modeOf(state),0o700);
+    const prior=path.join(state,'clock-hidden'), outside=path.join(dir,'outside');
+    fs.writeFileSync(prior,'{"birthYear":1990,"lifeExpectancy":80}\n'); fs.chmodSync(prior,0o644); fs.chmodSync(state,0o755);
+    fs.writeFileSync(outside,'secret\n'); fs.chmodSync(outside,0o644); fs.symlinkSync(outside,path.join(state,'linked'));
+    r=run(state); assert.equal(r.status,0,r.stderr);
+    assert.equal(modeOf(state),0o700); assert.equal(modeOf(prior),0o600);
+    assert.equal(fs.readFileSync(prior,'utf8'),'{"birthYear":1990,"lifeExpectancy":80}\n');
+    assert.equal(modeOf(outside),0o644);
     fs.writeFileSync(path.join(dir,'blocked'),''); r=run(path.join(dir,'blocked/familiar-dock'));
     assert.equal(r.status,1); assert(!r.stdout.includes('went on'));
+    // Mode at the mkdir syscall, before chmod: a new directory is 0700, not
+    // 0755 with a later chmod. The parent stays the user's umask.
+    const bin=path.join(dir,'bin'), modes=path.join(dir,'mkdir-modes'); fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin,'mkdir'),`#!/bin/bash
+/usr/bin/mkdir "$@"
+st=$?
+last=""
+for arg in "$@"; do last=$arg; done
+if [[ -n \${TEST_MKDIR_MODES:-} && -d \$last ]]; then stat -c %a -- "\$last" >> "\$TEST_MKDIR_MODES"; fi
+exit $st
+`); fs.chmodSync(path.join(bin,'mkdir'),0o755);
+    const fresh=path.join(dir,'fresh/familiar-dock');
+    const envMk={...process.env,PATH:`${bin}:${process.env.PATH}`,TEST_MKDIR_MODES:modes};
+    r=spawnSync('bash',['-c','umask 022; state=$1; '+Lifecycle.privateState,'test',fresh],{env:envMk,encoding:'utf8'});
+    assert.equal(r.status,0,r.stderr);
+    assert.equal(fs.readFileSync(modes,'utf8'),'755\n700\n');
+    assert.equal(modeOf(fresh),0o700); assert.equal(modeOf(path.dirname(fresh)),0o755);
     // A cleanup that removes the directory between mkdir and chmod: the lock
     // starts over (and a cleanup waiter finds nothing left to do). A chmod
     // refused on a directory that is still there stops it.
-    const bin=path.join(dir,'bin'), once=path.join(dir,'once'), refuse=path.join(dir,'refuse'); fs.mkdirSync(bin);
+    const once=path.join(dir,'once'), refuse=path.join(dir,'refuse');
     fs.writeFileSync(path.join(bin,'chmod'),`#!/bin/bash
 [[ ! -e $TEST_REFUSE ]] || { echo 'chmod: operation not permitted' >&2; exit 1; }
 if [[ ! -e $TEST_ONCE ]]; then : > "$TEST_ONCE"; rm -rf -- "\${@: -1}"; echo 'chmod: cannot access' >&2; exit 1; fi
@@ -1462,8 +1497,27 @@ test('review settings tool backs up once and restores exact bytes, including an 
   const original='  {"private":true}\n\n'; fs.writeFileSync(file,original);
   const run=mode=>{const r=spawnSync('bash',[path.join(root,'tools/try-settings.sh'),mode],{env:{...process.env,HOME:home},encoding:'utf8'}); assert.equal(r.status,0,r.stderr)};
   try {
-    run('Style'); run('Behavior'); run('restore'); assert.equal(fs.readFileSync(file,'utf8'),original);
-    assert(!fs.existsSync(path.join(home,'.local/state/familiar-dock/settings-under-test.bak')));
+    const stateDir=path.join(home,'.local/state/familiar-dock');
+    fs.mkdirSync(stateDir,{recursive:true}); fs.chmodSync(stateDir,0o755);
+    const leftover=path.join(stateDir,'clock-hidden');
+    fs.writeFileSync(leftover,'{"birthYear":1990}\n'); fs.chmodSync(leftover,0o644);
+    run('Style');
+    assert.equal(fs.statSync(stateDir).mode&0o777,0o700);
+    assert.equal(fs.statSync(leftover).mode&0o777,0o600);
+    assert.equal(fs.readFileSync(leftover,'utf8'),'{"birthYear":1990}\n');
+    const backup=path.join(stateDir,'settings-under-test.bak');
+    assert.equal(fs.statSync(backup).mode&0o777,0o600);
+    assert.equal(fs.statSync(path.join(stateDir,'settings-test-active')).mode&0o777,0o600);
+    assert.equal(fs.statSync(path.join(stateDir,'settings-test.lock')).mode&0o777,0o600);
+    // A second run does not rewrite the backup; a mode an earlier run left open is still closed.
+    fs.chmodSync(stateDir,0o755); fs.chmodSync(backup,0o644);
+    const backupBytes=fs.readFileSync(backup);
+    run('Behavior');
+    assert.equal(fs.statSync(stateDir).mode&0o777,0o700);
+    assert.equal(fs.statSync(backup).mode&0o777,0o600);
+    assert.deepEqual(fs.readFileSync(backup),backupBytes);
+    run('restore'); assert.equal(fs.readFileSync(file,'utf8'),original);
+    assert(!fs.existsSync(backup));
     fs.unlinkSync(file); run('Position'); run('restore'); assert(!fs.existsSync(file));
     for(const tab of ['Position','Style','Behavior','Action','Intellihide','Fine-Tune']) {
       const fixture=JSON.parse(fs.readFileSync(path.join(root,'tests/settings',tab+'.json')));

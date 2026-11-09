@@ -39,12 +39,17 @@ var lockedScript = [
     'state="$1/.local/state/familiar-dock"; mode=$2; supplied=${3:-null}',
     'config="$1/.config/omarchy/shell.json"',
     'marker="$state/clock-hidden"',
+    // Owner-only from the first byte, including when cleanup runs this body in
+    // a child of the lock. The temp file is created under this umask; chmod
+    // after mv would leave the stash world-readable for a moment.
+    'umask 077',
+    'save() { mv -f "$marker.tmp" "$marker"; }',
     'if [[ $mode == update ]]; then',
     '  [[ -s $marker ]] || exit 1',
     // While a clock may still be on the bar (a hide not yet seen to land, or a
     // restore not finished), it may hold the settings the stash had before:
     // those are kept with it, so that clock is still known as this stash's.
-    '  jq --argjson entry "$supplied" \'if (.pending == true or .placed == true) and .entry != $entry then .prior = ((.prior // []) + [.entry]) else . end | .entry = $entry\' "$marker" > "$marker.tmp"; mv -f "$marker.tmp" "$marker"; exit 0',
+    '  jq --argjson entry "$supplied" \'if (.pending == true or .placed == true) and .entry != $entry then .prior = ((.prior // []) + [.entry]) else . end | .entry = $entry\' "$marker" > "$marker.tmp"; save; exit 0',
     'fi',
     'jq -e \'type == "object" and ((.plugins // []) | type == "array")\' "$config" >/dev/null || exit 1',
     'if [[ $mode != cleanup ]] && ! jq -e \'any(.plugins[]?; .id == "rugobal.familiar-dock") and ((.disabledPlugins // [] | index("rugobal.familiar-dock")) == null)\' "$config" >/dev/null; then exit 0; fi',
@@ -61,7 +66,6 @@ var lockedScript = [
     // not have finished setting, or the one a hide that never landed left. One
     // holding anything else, or a bare id that takes no settings, is the user's.
     'stashed() { jq -e --slurpfile stash "$marker" \'$stash[0] as $s | length == 1 and (.[0].entry | type == "object" and all(to_entries[]; .key as $k | .value as $v | $k == "id" or $v == $s.entry[$k] or any(($s.prior // [])[] | objects; .[$k] == $v)))\' <<<"$found" >/dev/null; }',
-    'save() { mv -f "$marker.tmp" "$marker"; }',
     'if [[ $mode == show ]]; then',
     // A confirmed stash stays as it is, and so does a clock on the bar now:
     // the user put it back. The stash keeps the settings to put back. A

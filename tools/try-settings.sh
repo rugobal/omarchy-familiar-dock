@@ -6,8 +6,17 @@ mode=${1:-}
 case "$mode" in Position|Style|Behavior|Action|Intellihide|Fine-Tune|restore) ;; *) echo "Usage: $0 <Position|Style|Behavior|Action|Intellihide|Fine-Tune|restore>" >&2; exit 2;; esac
 state="$HOME/.local/state/familiar-dock"
 file="$HOME/.config/omarchy/familiar-dock.json"
-mkdir -p "$state" "$(dirname "$file")"
-chmod 700 "$state"
+# Same privacy rule as services/Lifecycle.js: parents keep the user's umask,
+# the state directory is born 0700, and the settings backup written below is
+# born 0600. A directory or backup an earlier run left open is closed too.
+mkdir -p -- "$(dirname -- "$state")" "$(dirname -- "$file")"
+umask 077
+mkdir -p -m 700 -- "$state"
+chmod 700 -- "$state"
+for f in "$state"/* "$state"/.[!.]* "$state"/..?*; do
+  [[ -f "$f" && ! -L "$f" ]] || continue
+  chmod 600 -- "$f"
+done
 exec 9>"$state/settings-test.lock"; flock -x 9
 backup="$state/settings-under-test.bak"
 active="$state/settings-test-active"
