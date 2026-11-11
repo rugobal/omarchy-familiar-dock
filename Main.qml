@@ -94,6 +94,7 @@ Item {
     Services.ClockLifecycle { id: clockLifecycle; actions: windowActions; shown: root.panels.some(function(p) { return p.isPrimary && p.clockVisible }) }
     readonly property var clockStash: clockLifecycle.stash
     function updateClockSettings(entry) { clockLifecycle.updateSettings(entry) }
+    function setBarClockSettings(changed) { clockLifecycle.setBarSettings(changed) }
     function clockWidgets() { return panels.map(function(p) { return p.clockWidget() }).filter(function(w) { return !!w }) }
     readonly property var clockIpcRecords: panels.map(function(p) {
         return {monitor: p.monitorName, visible: p.clockVisible, handler: p.clockHandler()}

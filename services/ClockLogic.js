@@ -34,18 +34,24 @@ function visibleLayout(settings, monitor, primary, visible) {
 // Runtime-only scripts. These are never executed against the real desktop by tests.
 // The installed registry removes bar entries on disable, so the marker IS the
 // write-ahead stash of settings and placement until restoration completes.
+// Clock settings can hold what the user keeps private, such as a birth year.
+// Any local account can read a process's arguments, but not its environment:
+// new settings come in as FAMILIAR_DOCK_CLOCK_ENTRY (the whole entry for an
+// update of the stash, only the changed settings for a set on the bar clock),
+// and settings reach shell.json through files, never on a command line.
 var lockedScript = [
     'set -euo pipefail',
-    'state="$1/.local/state/familiar-dock"; mode=$2; supplied=${3:-null}',
+    'state="$1/.local/state/familiar-dock"; mode=$2',
     'config="$1/.config/omarchy/shell.json"',
     'marker="$state/clock-hidden"',
-    'if [[ $mode == update ]]; then',
-    '  [[ -s $marker ]] || exit 1',
+    // A set that finds a stash, made since the panel last looked, goes to it.
+    'if [[ $mode == update || $mode == set ]] && [[ -s $marker ]]; then',
     // While a clock may still be on the bar (a hide not yet seen to land, or a
     // restore not finished), it may hold the settings the stash had before:
     // those are kept with it, so that clock is still known as this stash's.
-    '  jq --argjson entry "$supplied" \'if (.pending == true or .placed == true) and .entry != $entry then .prior = ((.prior // []) + [.entry]) else . end | .entry = $entry\' "$marker" > "$marker.tmp"; mv -f "$marker.tmp" "$marker"; exit 0',
+    '  jq --arg mode "$mode" \'.entry as $old | ($ENV.FAMILIAR_DOCK_CLOCK_ENTRY | fromjson | if type != "object" then error("not a clock entry") elif $mode == "set" then $old + del(.id) else . end) as $entry | if (.pending == true or .placed == true) and .entry != $entry then .prior = ((.prior // []) + [.entry]) else . end | .entry = $entry\' "$marker" > "$marker.tmp"; mv -f "$marker.tmp" "$marker"; exit 0',
     'fi',
+    '[[ $mode != update ]] || exit 1',
     'jq -e \'type == "object" and ((.plugins // []) | type == "array")\' "$config" >/dev/null || exit 1',
     'if [[ $mode != cleanup ]] && ! jq -e \'any(.plugins[]?; .id == "rugobal.familiar-dock") and ((.disabledPlugins // [] | index("rugobal.familiar-dock")) == null)\' "$config" >/dev/null; then exit 0; fi',
     'if [[ $mode == cleanup ]] && jq -e \'any(.plugins[]?; .id == "rugobal.familiar-dock") and ((.disabledPlugins // [] | index("rugobal.familiar-dock")) == null)\' "$config" >/dev/null; then exit 0; fi',
@@ -62,6 +68,56 @@ var lockedScript = [
     // holding anything else, or a bare id that takes no settings, is the user's.
     'stashed() { jq -e --slurpfile stash "$marker" \'$stash[0] as $s | length == 1 and (.[0].entry | type == "object" and all(to_entries[]; .key as $k | .value as $v | $k == "id" or $v == $s.entry[$k] or any(($s.prior // [])[] | objects; .[$k] == $v)))\' <<<"$found" >/dev/null; }',
     'save() { mv -f "$marker.tmp" "$marker"; }',
+    // Whether the one clock in $found holds every setting in $1.
+    'holds() { jq -e --slurpfile s <(printf \'%s\' "$1") \'length == 1 and (.[0].entry | type == "object") and (.[0].entry as $e | all($s[0] | to_entries[]; .key == "id" or $e[.key] == .value))\' <<<"$found" >/dev/null; }',
+    // A config with its keys sorted and its numbers written one way.
+    'canon() { jq -cS \'walk(if type == "number" then . * 1 else . end)\'; }',
+    // Puts the settings in $1 on the one clock, in section $at, through
+    // shell.json, as Omarchy's own bar commands do: the file is replaced with
+    // the config the shell holds plus the settings, keeping its mode and any
+    // link to it, and the shell reads it back. It is replaced only while it
+    // holds what the shell holds, both looked at again just before, so a
+    // change the shell has not saved yet, or one it never will, is not written
+    // over; only one made in the moment between that last look and the
+    // replacement can be, a moment every writer of shell.json has, Omarchy's
+    // own included. A file that already holds the settings only needs reading
+    // back. While it waits, the check named in $2, if any, must still pass:
+    // a restore stops once the user has changed the clock it put back. Done
+    // once the shell shows the clock with all the settings.
+    'put_settings() {',
+    '  local settings=$1 guard=${2:-} target tmp want held i',
+    '  jq -e \'type == "object"\' <<<"$settings" >/dev/null || return 1',
+    '  holds "$settings" && return 0',
+    '  target=$(readlink -f -- "$config") && tmp="$target.familiar-dock.tmp" || return 1',
+    '  for i in {1..20}; do',
+    '    [[ $(jq length <<<"$found") == 1 && $(jq -r \'.[0].section\' <<<"$found") == "$at" ]] && { [[ -z $guard ]] || $guard; } || return 1',
+    '    want=$(jq -c --slurpfile s <(printf \'%s\' "$settings") --arg at "$at" \'($s[0] | del(.id)) as $set | [.bar.layout[$at] | to_entries[] | select(.value == "omarchy.clock" or ((.value | type) == "object" and .value.id == "omarchy.clock")) | .key] as $n | if ($n | length) != 1 then error("no single clock in " + $at) else .bar.layout[$at][$n[0]] |= ((if type == "string" then {id: .} else . end) + $set) end\' <<<"$now") || return 1',
+    '    held=$(canon < "$config") || held=',
+    '    [[ $held == "$(canon <<<"$want")" ]] && break',
+    '    if [[ $held == "$(canon <<<"$now")" ]]; then',
+    '      jq . <<<"$want" > "$tmp" && chmod --reference="$target" -- "$tmp" || { rm -f -- "$tmp"; return 1; }',
+    '      if [[ $(live | canon) == "$held" && $(canon < "$config") == "$held" ]] && mv -f -- "$tmp" "$target"; then break; fi',
+    '      rm -f -- "$tmp"',
+    '    fi',
+    '    (( i < 20 )) || return 1',
+    '    sleep 0.1; now=$(live) || return 1; found=$(clocks <<<"$now")',
+    '  done',
+    '  timeout 5s omarchy-shell shell reloadConfig >/dev/null || :',
+    '  for i in {1..20}; do',
+    '    now=$(live) || return 1; found=$(clocks <<<"$now")',
+    '    holds "$settings" && return 0',
+    '    sleep 0.1',
+    '  done',
+    '  return 1',
+    '}',
+    // Settings changed with no stash to keep them go to the clock on the bar.
+    'if [[ $mode == set ]]; then',
+    '  now=$(live); found=$(clocks <<<"$now")',
+    '  [[ $(jq length <<<"$found") == 1 ]] || exit 0',
+    '  at=$(jq -r \'.[0].section\' <<<"$found")',
+    '  put_settings "${FAMILIAR_DOCK_CLOCK_ENTRY:-}" || exit 1',
+    '  exit 0',
+    'fi',
     'if [[ $mode == show ]]; then',
     // A confirmed stash stays as it is, and so does a clock on the bar now:
     // the user put it back. The stash keeps the settings to put back. A
@@ -115,10 +171,7 @@ var lockedScript = [
     // Its settings go to the clock in its section: the shell puts it earlier
     // than the stash says when that section has shrunk.
     'at=$(jq -r \'.[0].section\' <<<"$found")',
-    'while IFS= read -r key; do',
-    '  value=$(jq -c --arg key "$key" \'.entry[$key]\' "$marker")',
-    '  omarchy bar set omarchy.clock "$key" "$value" --json --from-section "$at"',
-    'done < <(jq -r --slurpfile stash "$marker" \'.[0].entry as $e | $stash[0].entry | to_entries[] | select(.key != "id" and $e[.key] != .value) | .key\' <<<"$found")',
+    'put_settings "$(jq -c \'.entry\' "$marker")" stashed || exit 1',
     // The stash goes only once the shell shows the clock with all of it.
     'now=$(live); found=$(clocks <<<"$now")',
     'jq -e --slurpfile stash "$marker" \'length == 1 and (.[0].entry | type == "object") and (.[0].entry as $e | all($stash[0].entry | to_entries[]; $e[.key] == .value))\' <<<"$found" >/dev/null || exit 1',

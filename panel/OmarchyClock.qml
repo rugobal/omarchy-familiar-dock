@@ -46,17 +46,20 @@ Item {
         api.activePopout = owner
     }
     // The scoped service facade cannot update another plugin's entry. While
-    // removed, the stash is its source of truth; otherwise use the public CLI.
+    // removed, the stash is its source of truth; otherwise only the settings
+    // changed here go to the bar clock, so one changed there meanwhile stays.
+    // The clock script takes both, never on a command line.
     QtObject {
         id: widgetShell
         function updateEntryInline(id, entry) {
             if (id !== "omarchy.clock") return false
             if (root.host.clockStash) root.host.updateClockSettings(entry)
             else {
+                var changed = {}
                 Object.keys(entry).forEach(function(key) {
-                    if (key !== "id" && JSON.stringify(entry[key]) !== JSON.stringify(root.clockSettings[key]))
-                        root.host.actions.run(["omarchy", "bar", "set", id, key, JSON.stringify(entry[key]), "--json"])
+                    if (key !== "id" && JSON.stringify(entry[key]) !== JSON.stringify(root.clockSettings[key])) changed[key] = entry[key]
                 })
+                if (Object.keys(changed).length) root.host.setBarClockSettings(changed)
             }
             return true
         }

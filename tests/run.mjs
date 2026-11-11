@@ -351,10 +351,9 @@ if [[ $1 == bar && $2 == put ]]; then
   jq --arg s "$5" --argjson i "$7" '.bar.layout[$s] |= ((. // [])[:$i] + [{id: "omarchy.clock"}] + (. // [])[$i:])' "$config" > "$config.tmp"
   mv "$config.tmp" "$config"; exit 0
 fi
-if [[ $1 == bar && $2 == set ]]; then
-  jq --arg s "$8" --arg k "$4" --argjson v "$5" '.bar.layout[$s] |= map(if type == "object" and .id == "omarchy.clock" then .[$k] = $v else . end)' "$config" > "$config.tmp"
-  mv "$config.tmp" "$config"; exit 0
-fi
+# Clock settings never go on a command line; this shell's config is its file.
+if [[ $1 == bar && $2 == set ]]; then exit 1; fi
+if [[ $1 == shell && $2 == reloadConfig ]]; then echo ok; exit 0; fi
 if [[ $1 == plugin ]]; then
   action=$2; id=$3
   [[ \${TEST_DOCK_MODE:-} != disable-lost || $action != disable ]] || exit 0
@@ -876,28 +875,37 @@ test('clock IPC elects one visible clock, yields to top bar and switches with fo
 });
 // A registry-like shell for the clock script. Its state lives in
 // shell.json.memory: `omarchy-shell shell listShellConfig` answers from it,
-// and it is saved to shell.json at once, or only on flush() while `late`
-// exists. Disable takes the first clock off the bar; put adds one where none
-// is, at the index given or the section's end; `bar set` refuses a section
-// with no clock, or a bare id, as the registry does. While `stuck` exists
-// removals and puts are lost, while `silent` exists the shell does not answer
-// a read, and while `setfail` exists every `bar set` fails once the number
-// of sets it holds, if any, have been made.
+// and it is saved to shell.json at once, or while `late` exists only on
+// flush() or the script's next sleep, or while `stale` exists never. Disable
+// takes the first clock off the bar; put adds one where none is, at the index
+// given or the section's end; `shell reloadConfig` reads shell.json back into
+// it, and any `bar set` fails. While `stuck` exists removals and puts are
+// lost, while `silent` exists the shell does not answer at all, and while
+// `deaf` exists it never reads shell.json back. With `race`, the user adds a
+// widget, saved at once, just as the script is about to replace shell.json;
+// with `meddle`, the user sets the clock's format while the script waits.
 function clockFixture(run) {
   const dir=fs.mkdtempSync(path.join(root,'tests/.clock-live-'));
   try {
     const bin=path.join(dir,'bin'), stateHome=path.join(dir,'state-home'); fs.mkdirSync(bin);
     const config=path.join(stateHome,'.config/omarchy/shell.json'); fs.mkdirSync(path.dirname(config),{recursive:true});
     const calls=path.join(dir,'calls'), stuck=path.join(dir,'stuck'), late=path.join(dir,'late'), memory=config+'.memory';
-    const silent=path.join(dir,'silent'), setfail=path.join(dir,'setfail');
+    const silent=path.join(dir,'silent'), deaf=path.join(dir,'deaf'), stale=path.join(dir,'stale'), race=path.join(dir,'race'), meddle=path.join(dir,'meddle');
+    const argv=path.join(dir,'argv'), trace=path.join(dir,'trace');
     const memo=`cfg=$TEST_SHELL_CONFIG; mem=$cfg.memory
 [[ -f $mem ]] || cp "$cfg" "$mem"`;
     for(const [name,body] of [['omarchy-shell',`printf '%s\\n' "$*" >> "$TEST_CALLS"
 ${memo}
-[[ "$1 $2" == "shell listShellConfig" && ! -e $TEST_CLOCK_SILENT ]] || { echo 'omarchy-shell is not responding' >&2; exit 1; }
+[[ ! -e $TEST_CLOCK_SILENT ]] || { echo 'omarchy-shell is not responding' >&2; exit 1; }
+# The shell reads shell.json back, unless it is deaf to it.
+if [[ "$1 $2" == "shell reloadConfig" ]]; then [[ -e $TEST_CLOCK_DEAF ]] || cp "$cfg" "$mem"; echo ok; exit 0; fi
+[[ "$1 $2" == "shell listShellConfig" ]] || exit 1
+if [[ -e $TEST_CLOCK_RACE && -e $(readlink -f "$cfg").familiar-dock.tmp ]]; then
+  jq '.bar.layout.left += ["user.widget"]' "$mem" > "$mem.tmp"; mv "$mem.tmp" "$mem"; cp "$mem" "$cfg"; rm -f "$TEST_CLOCK_RACE"
+fi
 jq -c . "$mem"`],['omarchy',`printf '%s\\n' "$*" >> "$TEST_CALLS"
 ${memo}
-save() { mv "$mem.tmp" "$mem"; [[ -e $TEST_CLOCK_LATE ]] || cp "$mem" "$cfg"; }
+save() { mv "$mem.tmp" "$mem"; [[ -e $TEST_CLOCK_LATE || -e $TEST_CLOCK_STALE ]] || cp "$mem" "$cfg"; }
 is='(. == "omarchy.clock" or (type == "object" and .id == "omarchy.clock"))'
 count='([.bar.layout[]?[]? | select('"$is"')] | length)'
 case "$1 $2" in
@@ -907,26 +915,28 @@ case "$1 $2" in
   "bar put")
     [[ ! -e $TEST_CLOCK_STUCK ]] || exit 0
     jq --arg s "$5" --argjson i "$7" 'if '"$count"' > 0 then . else .bar.layout[$s] |= ((. // []) as $r | ([$i, ($r | length)] | min) as $n | $r[:$n] + [{id: "omarchy.clock"}] + $r[$n:]) end' "$mem" > "$mem.tmp"; save ;;
-  "bar set")
-    if [[ -e $TEST_CLOCK_SETFAIL ]]; then
-      left=$(<"$TEST_CLOCK_SETFAIL")
-      [[ $left =~ ^[1-9][0-9]*$ ]] || { echo 'shell is not responding' >&2; exit 1; }
-      echo $((left - 1)) > "$TEST_CLOCK_SETFAIL"
-    fi
-    jq --arg s "$8" --arg k "$4" --argjson v "$5" '(.bar.layout[$s] // []) as $r | ([$r | to_entries[] | select(.value | '"$is"') | .key][0]) as $n
-      | if $n == null or ($r[$n] | type) != "object" then error("could not find widget omarchy.clock in " + $s) else .bar.layout[$s][$n][$k] = $v end' "$mem" > "$mem.tmp" || exit 1
-    save ;;
   *) exit 3 ;;
-esac`],['sleep',':']]) {
+esac`],['sleep',`${memo}
+if [[ -e $TEST_CLOCK_MEDDLE ]]; then
+  jq '.bar.layout |= map_values(map(if . == "omarchy.clock" or (type == "object" and .id == "omarchy.clock") then {id: "omarchy.clock", format: "h:mm a"} else . end))' "$mem" > "$mem.tmp"; mv "$mem.tmp" "$mem"; rm -f "$TEST_CLOCK_MEDDLE"
+fi
+[[ ! -e $TEST_CLOCK_LATE ]] || cp "$mem" "$cfg"`]]) {
       const file=path.join(bin,name); fs.writeFileSync(file,'#!/bin/bash\n'+body+'\n'); fs.chmodSync(file,0o755);
     }
-    const env={...process.env,PATH:`${bin}:${process.env.PATH}`,TEST_CALLS:calls,TEST_SHELL_CONFIG:config,TEST_CLOCK_STUCK:stuck,TEST_CLOCK_LATE:late,TEST_CLOCK_SILENT:silent,TEST_CLOCK_SETFAIL:setfail};
+    const env={...process.env,PATH:`${bin}:${process.env.PATH}`,TEST_CALLS:calls,TEST_SHELL_CONFIG:config,TEST_CLOCK_STUCK:stuck,TEST_CLOCK_LATE:late,TEST_CLOCK_SILENT:silent,TEST_CLOCK_DEAF:deaf,TEST_CLOCK_STALE:stale,TEST_CLOCK_RACE:race,TEST_CLOCK_MEDDLE:meddle,TEST_ARGV:argv};
     // An open umask, as most users have: the scripts must not rely on it.
-    const attempt=(mode,next)=>spawnSync('bash',['-c','umask 022\n'+Clock.script,'test',stateHome,mode,JSON.stringify(next??null)],{env,encoding:'utf8'});
+    // New settings come in the environment, as ClockLifecycle passes them.
+    const attempt=(mode,next)=>spawnSync('bash',['-c','umask 022\n'+Clock.script,'test',stateHome,mode],
+      {env:{...env,...(fs.existsSync(trace)?{PATH:`${trace}:${env.PATH}`}:{}),...(next===undefined?{}:{FAMILIAR_DOCK_CLOCK_ENTRY:JSON.stringify(next)})},encoding:'utf8'});
     const exec=(mode,next)=> {const result=attempt(mode,next);assert.equal(result.status,0,result.stderr);};
     const marker=path.join(stateHome,'.local/state/familiar-dock/clock-hidden');
     const read=()=>fs.existsSync(calls)?fs.readFileSync(calls,'utf8').trim().split('\n'):[];
-    run({config,stuck,late,silent,setfail,marker,exec,attempt,
+    run({config,stuck,late,silent,deaf,stale,race,meddle,marker,exec,attempt,
+      // From here on, the arguments of every command the script runs; the
+      // script names none by its full path.
+      traceArgv:()=>{fs.mkdirSync(trace); for(const name of ['bash','sh','env','jq','mv','cp','rm','chmod','readlink','timeout','mkdir','flock','cat','printf','echo','xargs','sed','awk','grep','tee','install','touch']) {
+        const file=path.join(trace,name); fs.writeFileSync(file,`#!/bin/bash\nprintf '%s\\n' "\${0##*/} $*" >> "$TEST_ARGV"\nexec "/usr/bin/\${0##*/}" "$@"\n`); fs.chmodSync(file,0o755);
+      } return ()=>[...(fs.existsSync(argv)?fs.readFileSync(argv,'utf8').trim().split('\n'):[]),...read()];},
       // What the user or a fresh shell has: memory and file agree.
       write:value=>{fs.writeFileSync(config,JSON.stringify(value)); fs.rmSync(memory,{force:true});},
       // A stash written by an earlier run.
@@ -949,7 +959,7 @@ test('clock lifecycle stashes exact placement/settings, restores them and update
   const changed={...entry,format:'HH:mm "$(bad)"'}; f.exec('update',changed);
   assert.equal(f.stash().entry.format,changed.format);
   f.exec('hide'); assert(!fs.existsSync(f.marker));
-  const lines=f.calls().join('\n'); assert.match(lines,/bar put omarchy.clock --section tray --index 1/); assert.match(lines,/bar set omarchy.clock format .* --json --from-section tray$/m);
+  const lines=f.calls().join('\n'); assert.match(lines,/bar put omarchy.clock --section tray --index 1/); assert.match(lines,/^shell reloadConfig$/m); assert.doesNotMatch(lines,/bar set/);
   deepEqual(f.layout().tray,[{id:'other'},changed],'put back where it was, with the settings it had');
   deepEqual(f.disk(),f.layout());
   const before=f.calls().length; f.exec('hide'); assert.equal(f.calls().length,before,'nothing stashed: nothing asked');
@@ -991,7 +1001,7 @@ test('a bare clock id is hidden and put back like an entry; the top bar knows it
   f.write({...dockOn,bar:{layout:{left:['other'],right:['omarchy.clock']}}});
   f.exec('show'); deepEqual(f.stash(),{section:'right',index:0,entry:{id:'omarchy.clock'}}); deepEqual(f.layout().right,[]);
   f.exec('hide'); assert(!fs.existsSync(f.marker)); deepEqual(f.layout().right,[{id:'omarchy.clock'}]);
-  assert(!f.acts().some(c=>c.startsWith('bar set')),'a bare id has no settings to put back');
+  assert(!f.acts().includes('shell reloadConfig'),'a bare id has no settings to put back');
   deepEqual(Clock.findEntry({left:['other'],right:['omarchy.clock']}),{section:'right',index:0,entry:{id:'omarchy.clock'}});
   // A bare id the user put back takes no settings: it stays as it is.
   f.stashed({section:'right',index:0,entry:{id:'omarchy.clock',format:'HH:mm'}});
@@ -1060,8 +1070,8 @@ test('a restore cut short finishes its settings next time, or is hidden again wi
     f.write({...dockOn,bar:{layout:{right:[]}}}); f.stashed({section:'right',index:0,entry});
     // shell.json may not show the clock yet: the shell's answer counts.
     if (next==='late show') fs.writeFileSync(f.late,'');
-    // The clock is put back, then its settings fail.
-    fs.writeFileSync(f.setfail,''); assert.notEqual(f.attempt('hide').status,0); fs.unlinkSync(f.setfail);
+    // The clock is put back, then the shell never reads its settings back.
+    fs.writeFileSync(f.deaf,''); assert.notEqual(f.attempt('hide').status,0); fs.unlinkSync(f.deaf);
     deepEqual(f.stash(),{section:'right',index:0,entry,placed:true}); deepEqual(f.layout().right,[{id:'omarchy.clock'}]);
     if (next==='hide') {
       // The clock it put there is its own: the settings are finished, not left.
@@ -1085,10 +1095,9 @@ test('a restore cut short finishes its settings next time, or is hidden again wi
 test('a settings change while the clock may still be on the bar keeps that clock known as the stash\'s', () => clockFixture(f => {
   const entry={id:'omarchy.clock',format:'HH:mm',formatAlt:'d MMMM'}, updated={...entry,format:'h:mm a'};
   for (const next of ['hide','show']) {
-    // A restore sets the format, then fails on the next setting.
-    f.write({...dockOn,bar:{layout:{right:[]}}}); f.stashed({section:'right',index:0,entry});
-    fs.writeFileSync(f.setfail,'1'); assert.notEqual(f.attempt('hide').status,0); fs.unlinkSync(f.setfail);
-    deepEqual(f.layout().right,[{id:'omarchy.clock',format:'HH:mm'}]);
+    // A clock half set by a restore cut short, as an earlier version could
+    // leave it: the format is back, the rest is not.
+    f.write({...dockOn,bar:{layout:{right:[{id:'omarchy.clock',format:'HH:mm'}]}}}); f.stashed({section:'right',index:0,entry,placed:true});
     f.exec('update',updated); deepEqual(f.stash(),{section:'right',index:0,entry:updated,placed:true,prior:[entry]});
     f.exec(next);
     if (next==='hide') { assert(!fs.existsSync(f.marker)); deepEqual(f.layout().right,[updated]); }
@@ -1112,11 +1121,10 @@ test('a settings change while the clock may still be on the bar keeps that clock
   // The half-set clock goes before the restore runs again: the clock put in
   // its place owes nothing to the settings the old one held, so a format the
   // user then gives it, even one of those, stays.
-  f.write({...dockOn,bar:{layout:{right:[]}}}); f.stashed({section:'right',index:0,entry});
-  fs.writeFileSync(f.setfail,'1'); assert.notEqual(f.attempt('hide').status,0); fs.unlinkSync(f.setfail);
+  f.write({...dockOn,bar:{layout:{right:[{id:'omarchy.clock',format:'HH:mm'}]}}}); f.stashed({section:'right',index:0,entry,placed:true});
   f.exec('update',updated); deepEqual(f.stash().prior,[entry]);
   f.write({...dockOn,bar:{layout:{right:[]}}});
-  fs.writeFileSync(f.setfail,''); assert.notEqual(f.attempt('hide').status,0); fs.unlinkSync(f.setfail);
+  fs.writeFileSync(f.deaf,''); assert.notEqual(f.attempt('hide').status,0); fs.unlinkSync(f.deaf);
   deepEqual(f.stash(),{section:'right',index:0,entry:updated,placed:true}); deepEqual(f.layout().right,[{id:'omarchy.clock'}]);
   const mine={id:'omarchy.clock',format:'HH:mm'};
   f.write({...dockOn,bar:{layout:{right:[mine]}}});
@@ -1137,6 +1145,95 @@ test('the clock stash is the user\'s alone, also in a state directory an earlier
   assert.equal(modeOf(state),0o700); assert.equal(modeOf(f.marker),0o600); assert.equal(modeOf(path.join(state,'clock.lock')),0o600);
   f.exec('update',{...entry,format:'H:mm'}); assert.equal(f.stash().entry.format,'H:mm'); assert.equal(modeOf(f.marker),0o600);
 }));
+test('clock settings never go on a command line, hidden, changed, put back or changed on the bar', () => clockFixture(f => {
+  const entry={id:'omarchy.clock',format:'HH:mm zq-format',birthYear:1957,lifeExpectancy:83.25};
+  f.write({...dockOn,bar:{layout:{left:['other'],right:[entry]}}});
+  const seen=f.traceArgv();
+  f.exec('show'); deepEqual(f.stash().entry,entry);
+  const changed={...entry,format:'H:mm zq-changed',birthYear:1958};
+  f.exec('update',changed); deepEqual(f.stash().entry,changed);
+  f.exec('hide'); assert(!fs.existsSync(f.marker)); deepEqual(f.layout().right,[changed]); deepEqual(f.disk(),f.layout());
+  // With no stash, the settings changed go to the clock on the bar, through
+  // shell.json; one the user changed there meanwhile stays.
+  const fresh={...f.layout().right[0],format:'H:mm zq-theirs'};
+  f.write({...dockOn,bar:{layout:{left:['other'],right:[fresh]}}});
+  f.exec('set',{lifeExpectancy:91.75,weekStart:'zq-week'}); assert(!fs.existsSync(f.marker));
+  deepEqual(f.layout().right,[{...fresh,lifeExpectancy:91.75,weekStart:'zq-week'}]); deepEqual(f.disk(),f.layout());
+  const lines=seen();
+  assert(lines.some(l=>l.startsWith('jq ')) && lines.some(l=>l.startsWith('bash ')) && lines.includes('shell reloadConfig'),'the trace saw the script at work');
+  for (const secret of ['zq-','1957','1958','83.25','91.75']) assert(!lines.some(l=>l.includes(secret)),`${secret} on a command line: ${lines.find(l=>l.includes(secret))}`);
+  // The same settings again: shell.json is left as it is.
+  const before=f.acts().length; f.exec('set',{lifeExpectancy:91.75}); deepEqual(f.acts().slice(before),[]);
+  for (const name of ['lockedScript','script']) assert.doesNotMatch(Clock[name],/(^|[\s;|&(`])\/(usr\/)?s?bin\//m,`${name} runs a command by its full path, out of the trace's sight`);
+}));
+test('a change to the clock settings goes to the stash while there is one, and only the changed settings to the bar', () => clockFixture(f => {
+  const entry={id:'omarchy.clock',format:'HH:mm',formatAlt:'d MMMM'};
+  f.write({...dockOn,bar:{layout:{right:[entry]}}});
+  // A set that finds a stash made since the panel looked goes to it, on top of
+  // what it holds.
+  f.exec('show'); f.exec('set',{format:'H:mm'}); deepEqual(f.stash().entry,{...entry,format:'H:mm'}); deepEqual(f.layout().right,[]);
+  f.exec('hide'); assert(!fs.existsSync(f.marker)); deepEqual(f.layout().right,[{...entry,format:'H:mm'}]);
+  // An update is for the stash alone: with none it changes nothing.
+  const before=f.acts().length;
+  assert.notEqual(f.attempt('update',{...entry,format:'h:mm a'}).status,0); deepEqual(f.acts().slice(before),[]); deepEqual(f.layout().right,[{...entry,format:'H:mm'}]);
+  // Settings that are not an object change nothing either.
+  for (const bad of [null,'HH:mm',[1]]) { assert.notEqual(f.attempt('set',bad).status,0); deepEqual(f.acts().slice(before),[]); }
+}));
+test('shell.json is never replaced while it holds what the shell does not', () => clockFixture(f => {
+  const entry={id:'omarchy.clock',format:'HH:mm'};
+  // The shell holds a change shell.json never gets: the restore puts the
+  // clock but writes nothing, keeps its stash, and tries again later.
+  f.write({...dockOn,bar:{layout:{left:['other'],right:[]}}}); f.stashed({section:'right',index:0,entry});
+  fs.writeFileSync(f.stale,''); const file=fs.readFileSync(f.config,'utf8');
+  assert.notEqual(f.attempt('hide').status,0); fs.unlinkSync(f.stale);
+  assert.equal(fs.readFileSync(f.config,'utf8'),file); deepEqual(f.stash(),{section:'right',index:0,entry,placed:true});
+  assert(!f.acts().includes('shell reloadConfig'),'nor read back over what the shell holds'); deepEqual(f.layout().right,[{id:'omarchy.clock'}]);
+  assert(!fs.readdirSync(path.dirname(f.config)).some(n=>n.endsWith('.tmp')),'no temp file left');
+  f.flush(); f.exec('hide'); assert(!fs.existsSync(f.marker)); deepEqual(f.layout(),{left:['other'],right:[entry]}); deepEqual(f.disk(),f.layout());
+  // shell.json catches up a moment late: the settings go in once it has.
+  f.write({...dockOn,bar:{layout:{left:['other'],right:[]}}}); f.stashed({section:'right',index:0,entry}); fs.writeFileSync(f.late,'');
+  f.exec('hide'); fs.unlinkSync(f.late); assert(!fs.existsSync(f.marker)); deepEqual(f.layout(),{left:['other'],right:[entry]}); deepEqual(f.disk(),f.layout());
+  // The user adds a widget just as shell.json is about to be replaced: the
+  // replacement waits for it, and both the widget and the settings stay.
+  f.write({...dockOn,bar:{layout:{left:['other'],right:[]}}}); f.stashed({section:'right',index:0,entry}); fs.writeFileSync(f.race,'');
+  f.exec('hide'); assert(!fs.existsSync(f.race),'the user made the change'); assert(!fs.existsSync(f.marker));
+  deepEqual(f.layout(),{left:['other','user.widget'],right:[entry]}); deepEqual(f.disk(),f.layout());
+  // While the restore waits for shell.json, the user sets the clock it put
+  // back: the clock is theirs, and keeps their format and nothing else.
+  f.write({...dockOn,bar:{layout:{left:['other'],right:[]}}}); f.stashed({section:'right',index:0,entry:{...entry,formatAlt:'d MMMM'}});
+  fs.writeFileSync(f.late,''); fs.writeFileSync(f.meddle,'');
+  assert.notEqual(f.attempt('hide').status,0); fs.unlinkSync(f.late); assert(!fs.existsSync(f.meddle),'the user set the clock');
+  const mine={id:'omarchy.clock',format:'h:mm a'};
+  deepEqual(f.layout().right,[mine]); deepEqual(f.disk(),f.layout());
+  f.exec('hide'); assert(!fs.existsSync(f.marker)); deepEqual(f.layout().right,[mine]);
+  // The same on the bar, with no stash.
+  f.write({...dockOn,bar:{layout:{left:['other'],right:[entry]}}}); fs.writeFileSync(f.race,'');
+  f.exec('set',{formatAlt:'d MMMM'}); assert(!fs.existsSync(f.race));
+  deepEqual(f.layout(),{left:['other','user.widget'],right:[{...entry,formatAlt:'d MMMM'}]}); deepEqual(f.disk(),f.layout());
+}));
+test('shell.json keeps its mode and its link when clock settings go in', () => clockFixture(f => {
+  const entry={id:'omarchy.clock',format:'HH:mm'}, real=f.config+'.real';
+  f.write({...dockOn,bar:{layout:{right:[]}}}); fs.renameSync(f.config,real); fs.symlinkSync(real,f.config); fs.chmodSync(real,0o640);
+  f.stashed({section:'right',index:0,entry});
+  f.exec('hide'); assert(!fs.existsSync(f.marker)); deepEqual(f.layout().right,[entry]);
+  assert(fs.lstatSync(f.config).isSymbolicLink()); assert.equal(modeOf(real),0o640); deepEqual(f.disk().right,[entry]);
+  assert(!fs.readdirSync(path.dirname(f.config)).some(n=>n.endsWith('.tmp')),'no temp file left');
+}));
+test('the panel hands clock settings to the clock script in its environment, never on a command line', () => {
+  const read=file=>fs.readFileSync(path.join(root,file),'utf8');
+  const lifecycle=read('services/ClockLifecycle.qml'), clock=read('panel/OmarchyClock.qml'), main=read('Main.qml');
+  assert.match(lifecycle,/runScript\(Logic\.script, \[stateHome, "update"\], function\(\) \{ marker\.reload\(\) \}, null, \{FAMILIAR_DOCK_CLOCK_ENTRY: JSON\.stringify\(entry\)\}\)/);
+  assert.match(lifecycle,/runScript\(Logic\.script, \[stateHome, "set"\], function\(\) \{ marker\.reload\(\) \}, null, \{FAMILIAR_DOCK_CLOCK_ENTRY: JSON\.stringify\(changed\)\}\)/);
+  assert.match(read('services/WindowActions.qml'),/worker\.environment = job\.env/);
+  assert.match(main,/function updateClockSettings\(entry\) \{ clockLifecycle\.updateSettings\(entry\) \}/);
+  assert.match(main,/function setBarClockSettings\(changed\) \{ clockLifecycle\.setBarSettings\(changed\) \}/);
+  // The stash takes the whole entry; the bar only what changed here.
+  assert.match(clock,/if \(root\.host\.clockStash\) root\.host\.updateClockSettings\(entry\)/);
+  assert.match(clock,/JSON\.stringify\(entry\[key\]\) !== JSON\.stringify\(root\.clockSettings\[key\]\)\) changed\[key\] = entry\[key\]/);
+  assert.match(clock,/if \(Object\.keys\(changed\)\.length\) root\.host\.setBarClockSettings\(changed\)/);
+  for (const dir of ['.','panel','services','settings']) for (const file of fs.readdirSync(path.join(root,dir)).filter(n=>/\.(qml|js)$/.test(n)))
+    assert.doesNotMatch(read(path.join(dir,file)),/"bar", "set"|bar set omarchy\.clock|--argjson entry/,file);
+});
 const Lifecycle = library('services/Lifecycle.js');
 test('the state directory is made private; its parents keep the user\'s umask; one it cannot make stops the script', () => {
   const dir=fs.mkdtempSync(path.join(root,'tests/.private-'));
@@ -1529,7 +1626,7 @@ test('detached removal cleanup restores owned clock, dock and exact opacity with
   r=f.execute(Cleanup.script,[f.home]); assert.equal(r.status,0,r.stderr);
   assert(!fs.existsSync(state)); assert.match(f.read(),/plugin enable omarchy.dock/);
   assert.match(f.read(),/bar put omarchy.clock --section right --index 0/);
-  assert.match(f.read(),/bar set omarchy.clock format "HH:mm" --json --from-section right/);
+  assert.doesNotMatch(f.read(),/bar set/);
   assert.match(f.read(),/value = "0.6"/); assert.match(f.read(),/value = "0.35"/);
   deepEqual(JSON.parse(fs.readFileSync(config)).bar.layout.right,[{id:'omarchy.clock',format:'HH:mm'}]);
 }));

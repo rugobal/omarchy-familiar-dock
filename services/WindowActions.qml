@@ -18,8 +18,10 @@ Item {
     property bool desktopBatchRunning: false
     property bool warnedLauncher: false
     signal dispatched()
-    function run(argv, done, begin) {
-        queue.push({argv: argv, done: done || null, begin: begin || null})
+    // env holds what must not go on a command line, where any local account
+    // can read it; a process's environment is its owner's alone.
+    function run(argv, done, begin, env) {
+        queue.push({argv: argv, done: done || null, begin: begin || null, env: env || ({})})
         pump()
     }
     function pump() {
@@ -28,9 +30,10 @@ Item {
         completion = job.done
         if (job.begin) job.begin()
         worker.command = job.argv
+        worker.environment = job.env
         worker.running = true
     }
-    function runScript(script, args, done, begin) { run(["bash", "-c", script, "familiar-dock"].concat(args), done, begin) }
+    function runScript(script, args, done, begin, env) { run(["bash", "-c", script, "familiar-dock"].concat(args), done, begin, env) }
     Process {
         id: worker
         property string output: ""

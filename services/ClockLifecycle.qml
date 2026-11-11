@@ -14,8 +14,15 @@ Item {
     function reconcile() {
         actions.runScript(Logic.script, [stateHome, shown ? "show" : "hide"], function() { marker.reload() })
     }
+    // Settings can hold what the user keeps private, so they go to the clock
+    // script in its environment, never on its command line. updateSettings
+    // takes the whole entry, for the stash; setBarSettings only the changed
+    // settings, for the clock on the bar.
     function updateSettings(entry) {
-        actions.runScript(Logic.script, [stateHome, "update", JSON.stringify(entry)], function() { marker.reload() })
+        actions.runScript(Logic.script, [stateHome, "update"], function() { marker.reload() }, null, {FAMILIAR_DOCK_CLOCK_ENTRY: JSON.stringify(entry)})
+    }
+    function setBarSettings(changed) {
+        actions.runScript(Logic.script, [stateHome, "set"], function() { marker.reload() }, null, {FAMILIAR_DOCK_CLOCK_ENTRY: JSON.stringify(changed)})
     }
     onShownChanged: if (started) debounce.restart()
     Timer { id: debounce; interval: 100; onTriggered: root.reconcile() }
