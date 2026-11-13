@@ -4,7 +4,7 @@
   "name": "Familiar Dock",
   "version": "0.1.0",
   "author": "rugobal",
-  "description": "A Windows-style taskbar or a macOS-style dock for Omarchy, inspired by GNOME's Dash to Panel",
+  "description": "A Windows taskbar or a macOS dock for Omarchy, with live window previews. Pinned apps, an app drawer, the clock and Show Desktop, right where you expect them. One setting switches between the two looks, and over 150 more let you tune the rest in its own Settings window. Easy to set up: install it and it is ready, next to Omarchy's top bar. Inspired by GNOME's Dash to Panel.",
   "license": "GPL-2.0-or-later",
   "kinds": ["service", "menu"],
   "keepLoaded": true,
